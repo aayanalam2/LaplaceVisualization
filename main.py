@@ -331,7 +331,7 @@ class LaplaceScene(Scene):
             
             # Run manim with error handling
             cmd = ['manim', '-pqh', temp_file, 'LaplaceScene']
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)  # 5 minute timeout
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=3000)
             
             # Clean up temp file
             try:
@@ -348,7 +348,7 @@ class LaplaceScene(Scene):
                 self.finished.emit()
                 
         except subprocess.TimeoutExpired:
-            self.error.emit("Manim rendering timed out after 5 minutes")
+            self.error.emit("Manim rendering timed out after 50 minutes")
         except Exception as e:
             self.error.emit(f"Unexpected error: {str(e)}")
 
@@ -383,22 +383,22 @@ class LaplaceVisualizerGUI(QMainWindow):
         # Grid size (reduced max to prevent timeout)
         params_layout.addWidget(QLabel("Grid Size:"), 0, 0)
         self.grid_size_spin = QSpinBox()
-        self.grid_size_spin.setRange(10, 100)  # Reduced from 200
-        self.grid_size_spin.setValue(30)       # Reduced from 50
+        self.grid_size_spin.setRange(10, 200) 
+        self.grid_size_spin.setValue(30)       
         params_layout.addWidget(self.grid_size_spin, 0, 1)
         
         # Max iterations (reduced)
         params_layout.addWidget(QLabel("Max Iterations:"), 1, 0)
         self.iterations_spin = QSpinBox()
-        self.iterations_spin.setRange(10, 1000)  # Reduced from 5000
-        self.iterations_spin.setValue(200)       # Reduced from 1000
+        self.iterations_spin.setRange(10, 10000)  
+        self.iterations_spin.setValue(200)       
         params_layout.addWidget(self.iterations_spin, 1, 1)
         
         # Tolerance
         params_layout.addWidget(QLabel("Convergence Tolerance:"), 2, 0)
         self.tolerance_spin = QDoubleSpinBox()
-        self.tolerance_spin.setRange(1e-6, 1e-2)  # Relaxed from 1e-8
-        self.tolerance_spin.setValue(1e-4)        # Relaxed from 1e-5
+        self.tolerance_spin.setRange(1e-6, 1e-2)  
+        self.tolerance_spin.setValue(1e-4)        
         self.tolerance_spin.setDecimals(8)
         self.tolerance_spin.setSingleStep(1e-5)
         params_layout.addWidget(self.tolerance_spin, 2, 1)
