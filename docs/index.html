@@ -1,0 +1,381 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>2D Laplace Equation Visualizer</title>
+<meta name="description" content="Interactive Jacobi solver for the 2D Laplace equation, with Dirichlet and Neumann boundary conditions, running in the browser.">
+<style>
+:root{
+  --bg:#f4f5f3; --panel:#ffffff; --ink:#15201a; --muted:#5a6660; --line:#d6dbd7;
+  --accent:#9a501b; --accent-soft:#f3e3d5; --ok:#1f6b45;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  --sans:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+}
+@media (prefers-color-scheme:dark){
+  :root{--bg:#0e1411;--panel:#151d19;--ink:#e1e8e3;--muted:#9aa8a1;--line:#27322c;
+        --accent:#de8f55;--accent-soft:#3a2618;--ok:#6cc596;}
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 var(--sans)}
+header{max-width:1100px;margin:0 auto;padding:28px 20px 8px}
+h1{margin:0;font-size:clamp(22px,3.4vw,30px);line-height:1.15}
+header p{margin:8px 0 0;color:var(--muted);max-width:70ch}
+header a{color:var(--accent)}
+main{max-width:1100px;margin:0 auto;padding:16px 20px 60px;display:grid;
+     grid-template-columns:minmax(0,1fr) 300px;gap:20px;align-items:start}
+@media (max-width:860px){main{grid-template-columns:1fr}}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px;min-width:0}
+.stage{display:flex;flex-direction:column;gap:12px;min-width:0}
+.canvas-wrap{position:relative;display:flex;gap:12px;align-items:stretch;min-width:0}
+#field{flex:1 1 auto;min-width:0;width:100%;max-width:560px;aspect-ratio:1/1;image-rendering:pixelated;
+       border:1px solid var(--line);border-radius:6px;background:var(--bg)}
+.cbar{flex:0 0 auto;display:flex;flex-direction:column;align-items:center;gap:6px;font:12px/1 var(--mono);color:var(--muted)}
+#colorbar{width:18px;flex:1 1 auto;min-height:0;border:1px solid var(--line);border-radius:4px}
+.readout{display:flex;flex-wrap:wrap;gap:8px 22px;font:13px/1 var(--mono);color:var(--muted)}
+.readout b{color:var(--ink);font-weight:600}
+.readout .conv{color:var(--ok);font-weight:600}
+.controls{display:flex;flex-wrap:wrap;gap:8px}
+button{font:600 14px/1 var(--sans);padding:9px 14px;border-radius:6px;border:1px solid var(--line);
+       background:var(--panel);color:var(--ink);cursor:pointer}
+button:hover{border-color:var(--accent)}
+button.primary{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+h2{font:600 12px/1.2 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted);
+   margin:0 0 10px}
+.side h2:not(:first-child){margin-top:20px}
+.row{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center;margin-bottom:9px}
+.row label{font-size:13px}
+.row output{font:12px/1 var(--mono);color:var(--muted)}
+input[type=range]{width:100%;accent-color:var(--accent)}
+select,input[type=number]{font:13px var(--sans);padding:6px 8px;border:1px solid var(--line);
+       border-radius:5px;background:var(--bg);color:var(--ink);width:100%}
+.edge{display:grid;grid-template-columns:52px 1fr 76px;gap:6px;align-items:center;margin-bottom:7px}
+.edge span{font:12px var(--mono);color:var(--muted)}
+.presets{display:flex;flex-direction:column;gap:6px}
+.presets button{text-align:left;font-weight:500}
+#convergence{width:100%;height:110px;border:1px solid var(--line);border-radius:6px;background:var(--bg)}
+.note{font-size:12.5px;color:var(--muted);margin:10px 0 0}
+footer{max-width:1100px;margin:0 auto;padding:0 20px 50px;color:var(--muted);font-size:13px}
+footer a{color:var(--accent)}
+code{font-family:var(--mono);font-size:12.5px}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>2D Laplace Equation Visualizer</h1>
+  <p>Solves Laplace's equation on a square grid by Jacobi iteration, with Dirichlet or
+  Neumann conditions on each edge. This is a browser version of a
+  <a href="https://github.com/aayanalam2/LaplaceVisualization">PyQt5 and Manim desktop tool</a>;
+  the solver is the same, but here it runs live instead of rendering a video.</p>
+</header>
+
+<main>
+  <section class="panel stage">
+    <div class="canvas-wrap">
+      <canvas id="field" width="480" height="480" aria-label="Heatmap of the solution field"></canvas>
+      <div class="cbar">
+        <span id="cbmax">1.00</span>
+        <canvas id="colorbar" width="18" height="300" aria-hidden="true"></canvas>
+        <span id="cbmin">0.00</span>
+      </div>
+    </div>
+
+    <div class="readout">
+      <span>iteration <b id="r-iter">0</b></span>
+      <span>max change <b id="r-change">n/a</b></span>
+      <span>range <b id="r-range">0.00 to 0.00</b></span>
+      <span id="r-status"></span>
+    </div>
+
+    <div class="controls">
+      <button id="run" class="primary">Run</button>
+      <button id="step">Step</button>
+      <button id="reset">Reset</button>
+      <button id="solve">Solve to end</button>
+    </div>
+
+    <div>
+      <h2>Convergence</h2>
+      <canvas id="convergence" width="700" height="110" aria-label="Maximum change per iteration, log scale"></canvas>
+      <p class="note">Log scale. The dashed line is the tolerance.</p>
+    </div>
+  </section>
+
+  <aside class="panel side">
+    <h2>Solver</h2>
+    <div class="row">
+      <label for="grid">Grid size</label><output id="grid-out">30</output>
+    </div>
+    <input type="range" id="grid" min="10" max="100" step="1" value="30">
+
+    <div class="row">
+      <label for="maxiter">Max iterations</label><output id="maxiter-out">200</output>
+    </div>
+    <input type="range" id="maxiter" min="10" max="1000" step="10" value="200">
+
+    <div class="row">
+      <label for="tol">Tolerance</label><output id="tol-out">1e-4</output>
+    </div>
+    <input type="range" id="tol" min="2" max="6" step="1" value="4">
+
+    <div class="row">
+      <label for="speed">Iterations per frame</label><output id="speed-out">2</output>
+    </div>
+    <input type="range" id="speed" min="1" max="50" step="1" value="2">
+
+    <h2>Boundaries</h2>
+    <div class="edge">
+      <span>top</span>
+      <select id="top-type"><option value="dirichlet">Dirichlet</option><option value="neumann">Neumann</option></select>
+      <input type="number" id="top-val" value="100" step="5">
+    </div>
+    <div class="edge">
+      <span>bottom</span>
+      <select id="bottom-type"><option value="dirichlet">Dirichlet</option><option value="neumann">Neumann</option></select>
+      <input type="number" id="bottom-val" value="0" step="5">
+    </div>
+    <div class="edge">
+      <span>left</span>
+      <select id="left-type"><option value="neumann">Neumann</option><option value="dirichlet">Dirichlet</option></select>
+      <input type="number" id="left-val" value="0" step="5">
+    </div>
+    <div class="edge">
+      <span>right</span>
+      <select id="right-type"><option value="neumann">Neumann</option><option value="dirichlet">Dirichlet</option></select>
+      <input type="number" id="right-val" value="0" step="5">
+    </div>
+
+    <div class="row" style="margin-top:12px">
+      <label for="fixcorners">Fix free corners</label>
+      <input type="checkbox" id="fixcorners" checked style="width:auto;justify-self:end">
+    </div>
+    <p class="note">The desktop version skips corners when applying Neumann conditions, so a
+    corner between two Neumann edges keeps its initial value of zero. Unchecking this
+    reproduces that behaviour.</p>
+
+    <h2>Presets</h2>
+    <div class="presets">
+      <button data-preset="heat">Heat conduction</button>
+      <button data-preset="electro">Electrostatic potential</button>
+      <button data-preset="diffusion">Steady-state diffusion</button>
+    </div>
+  </aside>
+</main>
+
+<footer>
+  Jacobi iteration on a 5-point stencil. Each sweep sets every interior point to the average
+  of its four neighbours, then applies Neumann edges as a ghost-node copy of the adjacent
+  interior row or column. It stops when the largest change in one sweep falls below the
+  tolerance, with a floor of ten iterations.
+  <a href="https://github.com/aayanalam2/LaplaceVisualization">Source on GitHub</a>.
+</footer>
+
+<script>
+(function(){
+  "use strict";
+  var $ = function(id){ return document.getElementById(id); };
+
+  // Manim's default palette, quartered the same way as the desktop version.
+  var STOPS = [[88,196,221],[92,208,179],[131,193,103],[255,255,0],[252,98,85]];
+  function colorAt(t){
+    if (!(t >= 0)) t = 0; if (t > 1) t = 1;
+    var s = t * 4, i = Math.min(3, Math.floor(s)), f = s - i;
+    var a = STOPS[i], b = STOPS[i+1];
+    return [a[0]+(b[0]-a[0])*f, a[1]+(b[1]-a[1])*f, a[2]+(b[2]-a[2])*f];
+  }
+
+  var S = { n:30, maxIter:200, tol:1e-4, perFrame:2,
+            u:null, un:null, mask:null, iter:0, change:NaN, hist:[],
+            converged:false, stopped:false, running:false };
+
+  function bc(){
+    return {
+      top:    {type:$("top-type").value,    value:+$("top-val").value},
+      bottom: {type:$("bottom-type").value, value:+$("bottom-val").value},
+      left:   {type:$("left-type").value,   value:+$("left-val").value},
+      right:  {type:$("right-type").value,  value:+$("right-val").value}
+    };
+  }
+
+  function reset(){
+    var n = S.n, b = bc();
+    S.u = new Float64Array(n*n);
+    S.un = new Float64Array(n*n);
+    S.mask = new Uint8Array(n*n);
+    var i, j;
+    // Dirichlet edges are written into the field and frozen, exactly as in the desktop code.
+    if (b.top.type === "dirichlet")    for (j=0;j<n;j++){ S.u[j] = b.top.value; S.mask[j] = 1; }
+    if (b.bottom.type === "dirichlet") for (j=0;j<n;j++){ S.u[(n-1)*n+j] = b.bottom.value; S.mask[(n-1)*n+j] = 1; }
+    if (b.left.type === "dirichlet")   for (i=0;i<n;i++){ S.u[i*n] = b.left.value; S.mask[i*n] = 1; }
+    if (b.right.type === "dirichlet")  for (i=0;i<n;i++){ S.u[i*n+n-1] = b.right.value; S.mask[i*n+n-1] = 1; }
+    S.iter = 0; S.change = NaN; S.hist = []; S.converged = false; S.stopped = false;
+    draw(); drawConvergence(); readout();
+  }
+
+  function step(){
+    if (S.stopped) return false;
+    var n = S.n, u = S.u, un = S.un, b = bc(), i, j, k;
+    un.set(u);
+
+    for (i=1;i<n-1;i++){
+      for (j=1;j<n-1;j++){
+        k = i*n+j;
+        if (!S.mask[k]) un[k] = 0.25*(u[k+n] + u[k-n] + u[k+1] + u[k-1]);
+      }
+    }
+
+    // Neumann edges, applied after the sweep, with the sign convention of the original.
+    if (b.top.type === "neumann")    for (j=1;j<n-1;j++) un[j] = un[n+j] + b.top.value;
+    if (b.bottom.type === "neumann") for (j=1;j<n-1;j++) un[(n-1)*n+j] = un[(n-2)*n+j] - b.bottom.value;
+    if (b.left.type === "neumann")   for (i=1;i<n-1;i++) un[i*n] = un[i*n+1] + b.left.value;
+    if (b.right.type === "neumann")  for (i=1;i<n-1;i++) un[i*n+n-1] = un[i*n+n-2] - b.right.value;
+
+    if ($("fixcorners").checked){
+      var free = function(a,c){ return b[a].type === "neumann" && b[c].type === "neumann"; };
+      if (free("top","left"))     un[0]           = 0.5*(un[1] + un[n]);
+      if (free("top","right"))    un[n-1]         = 0.5*(un[n-2] + un[2*n-1]);
+      if (free("bottom","left"))  un[(n-1)*n]     = 0.5*(un[(n-1)*n+1] + un[(n-2)*n]);
+      if (free("bottom","right")) un[n*n-1]       = 0.5*(un[n*n-2] + un[(n-1)*n-1]);
+    }
+
+    var mc = 0;
+    for (k=0;k<n*n;k++){ var d = Math.abs(un[k]-u[k]); if (d > mc) mc = d; }
+    S.change = mc; S.hist.push(mc);
+    S.u = un; S.un = u;
+    S.iter++;
+
+    if (mc < S.tol && S.iter > 10){ S.converged = true; S.stopped = true; }
+    else if (S.iter >= S.maxIter){ S.stopped = true; }
+    return !S.stopped;
+  }
+
+  var fc = $("field"), fx = fc.getContext("2d");
+  var off = document.createElement("canvas"), ox = off.getContext("2d");
+
+  function range(){
+    var lo = Infinity, hi = -Infinity, u = S.u;
+    for (var k=0;k<u.length;k++){ var v = u[k]; if (v<lo) lo=v; if (v>hi) hi=v; }
+    if (!isFinite(lo) || !isFinite(hi)){ lo = 0; hi = 1; }
+    if (Math.abs(hi-lo) < 1e-12) hi = lo + 1;
+    return [lo,hi];
+  }
+
+  function draw(){
+    var n = S.n, r = range(), lo = r[0], span = r[1]-r[0];
+    off.width = n; off.height = n;
+    var img = ox.createImageData(n,n), d = img.data;
+    for (var k=0;k<n*n;k++){
+      var c = colorAt((S.u[k]-lo)/span), p = k*4;
+      d[p] = c[0]; d[p+1] = c[1]; d[p+2] = c[2]; d[p+3] = 255;
+    }
+    ox.putImageData(img,0,0);
+    fx.imageSmoothingEnabled = false;
+    fx.clearRect(0,0,fc.width,fc.height);
+    fx.drawImage(off,0,0,fc.width,fc.height);
+    $("cbmin").textContent = r[0].toFixed(2);
+    $("cbmax").textContent = r[1].toFixed(2);
+    $("r-range").textContent = r[0].toFixed(2) + " to " + r[1].toFixed(2);
+  }
+
+  function drawColorbar(){
+    var c = $("colorbar"), x = c.getContext("2d"), h = c.height;
+    for (var y=0;y<h;y++){
+      var col = colorAt(1 - y/(h-1));
+      x.fillStyle = "rgb(" + (col[0]|0) + "," + (col[1]|0) + "," + (col[2]|0) + ")";
+      x.fillRect(0,y,c.width,1);
+    }
+  }
+
+  function drawConvergence(){
+    var c = $("convergence"), x = c.getContext("2d"), w = c.width, h = c.height;
+    var css = getComputedStyle(document.body);
+    x.clearRect(0,0,w,h);
+    if (S.hist.length < 2) return;
+    var lo = Math.log10(Math.max(S.tol/100, 1e-12)), hi = Math.log10(Math.max.apply(null, S.hist) || 1);
+    if (hi <= lo) hi = lo + 1;
+    var X = function(i){ return 6 + i*(w-12)/Math.max(1,S.hist.length-1); };
+    var Y = function(v){ var t = (Math.log10(Math.max(v,1e-12)) - lo)/(hi-lo); return h-6 - t*(h-16); };
+    x.strokeStyle = css.getPropertyValue("--accent").trim() || "#9a501b";
+    x.setLineDash([4,3]); x.lineWidth = 1;
+    x.beginPath(); x.moveTo(6, Y(S.tol)); x.lineTo(w-6, Y(S.tol)); x.stroke();
+    x.setLineDash([]);
+    x.strokeStyle = css.getPropertyValue("--ink").trim() || "#15201a";
+    x.lineWidth = 1.5; x.beginPath();
+    for (var i=0;i<S.hist.length;i++){ var px = X(i), py = Y(S.hist[i]); i ? x.lineTo(px,py) : x.moveTo(px,py); }
+    x.stroke();
+  }
+
+  function readout(){
+    $("r-iter").textContent = S.iter;
+    $("r-change").textContent = isNaN(S.change) ? "n/a" : S.change.toExponential(2);
+    var s = $("r-status");
+    s.className = S.converged ? "conv" : "";
+    s.textContent = S.converged ? "converged" :
+      (S.stopped ? "stopped at max iterations" : (S.running ? "running" : ""));
+    $("run").textContent = S.running ? "Pause" : "Run";
+  }
+
+  function frame(){
+    if (!S.running) return;
+    for (var i=0;i<S.perFrame;i++) if (!step()) { S.running = false; break; }
+    draw(); drawConvergence(); readout();
+    if (S.running) requestAnimationFrame(frame);
+  }
+
+  $("run").addEventListener("click", function(){
+    if (S.stopped) reset();
+    S.running = !S.running; readout();
+    if (S.running) requestAnimationFrame(frame);
+  });
+  $("step").addEventListener("click", function(){
+    S.running = false; step(); draw(); drawConvergence(); readout();
+  });
+  $("reset").addEventListener("click", function(){ S.running = false; reset(); });
+  $("solve").addEventListener("click", function(){
+    S.running = false; if (S.stopped) reset();
+    var guard = 0;
+    while (step() && guard++ < 100000){}
+    draw(); drawConvergence(); readout();
+  });
+
+  function bindRange(id, fmt, apply){
+    var el = $(id), out = $(id + "-out");
+    var sync = function(){ out.textContent = fmt(+el.value); apply(+el.value); };
+    el.addEventListener("input", sync);
+    sync();
+  }
+  bindRange("grid", String, function(v){ S.n = v; S.running = false; reset(); });
+  bindRange("maxiter", String, function(v){ S.maxIter = v; if (S.stopped && !S.converged) S.stopped = S.iter >= v; readout(); });
+  bindRange("tol", function(v){ return "1e-" + v; }, function(v){ S.tol = Math.pow(10,-v); drawConvergence(); });
+  bindRange("speed", String, function(v){ S.perFrame = v; });
+
+  ["top","bottom","left","right"].forEach(function(e){
+    $(e + "-type").addEventListener("change", function(){ S.running = false; reset(); });
+    $(e + "-val").addEventListener("change", function(){ S.running = false; reset(); });
+  });
+  $("fixcorners").addEventListener("change", function(){ S.running = false; reset(); });
+
+  var PRESETS = {
+    heat:      {top:["dirichlet",100], bottom:["dirichlet",0],   left:["neumann",0],     right:["neumann",0]},
+    electro:   {top:["neumann",0],     bottom:["neumann",0],     left:["dirichlet",-50], right:["dirichlet",50]},
+    diffusion: {top:["dirichlet",80],  bottom:["dirichlet",20],  left:["dirichlet",0],   right:["dirichlet",60]}
+  };
+  document.querySelectorAll("[data-preset]").forEach(function(btn){
+    btn.addEventListener("click", function(){
+      var p = PRESETS[btn.dataset.preset];
+      Object.keys(p).forEach(function(edge){
+        $(edge + "-type").value = p[edge][0];
+        $(edge + "-val").value  = p[edge][1];
+      });
+      S.running = false; reset();
+    });
+  });
+
+  drawColorbar();
+  reset();
+})();
+</script>
+</body>
+</html>

@@ -1,6 +1,25 @@
 # 2D Laplace Equation Visualizer
 
-A sophisticated GUI application that creates animated visualizations of the 2D Laplace equation solution using the Jacobi iterative method. Built with PyQt5 and Manim, this tool provides an intuitive interface for exploring partial differential equations through interactive animations.
+A GUI application that creates animated visualizations of the 2D Laplace equation solution using the Jacobi iterative method. Built with PyQt5 and Manim, it renders the field as it relaxes toward a solution under the boundary conditions you choose.
+
+## Run it in the browser
+
+**[Open the interactive version](https://aayanalam2.github.io/LaplaceVisualization/)**
+
+The desktop app renders a video with Manim, which takes minutes and needs cairo,
+ffmpeg and a working Manim install. The browser version runs the same solver live,
+so you can change a boundary condition and watch the field respond. It is a single
+static page with no dependencies, in [`docs/`](docs/index.html).
+
+The two agree numerically. On the default case (30x30, 200 iterations, top at 100,
+bottom at 0, sides insulated) both stop at iteration 200 with a maximum change of
+1.21e-01, which is worth noting: the default iteration count does not reach the
+default tolerance of 1e-4. Raise the iterations or relax the tolerance to converge.
+
+One deliberate difference: when applying Neumann conditions, the desktop code
+updates edges but skips corners, so a corner between two Neumann edges keeps its
+initial value of zero. The browser version averages the two adjacent edge cells
+instead, and has a "Fix free corners" toggle so you can see both behaviours.
 
 ## Features
 
